@@ -12,7 +12,14 @@
 // For displays that use the SH1106 driver uncomment line 110 and comment-out line 109
 // FYI: the MCP2515 is connected to the Leafs EV-CAN bus via the OBD2 socket
 
+// This revision by Ray Ellison changes the MAXGids limit to allow for vehicles with 
+// Battery upgrades.
+
 /*
+
+   V59 - 16Mar 2025
+   added support for larger battery Gids and likewise battery upgrade Leafs
+   
    V58 - 6 July 2021
    Reorganising the pages a bit
 
@@ -80,12 +87,12 @@
 #include "battery_large.h"     // large outline battery image (there must be a copy of this in with the LeafSOC code)
 #include "battery_solid.h"     // small solid battery image (there must be a copy of this in with the LeafSOC code)
 
-#define VERSION "LeafSOC v58"
-#define DATE    "6 Jul 2021"
+#define VERSION "LeafSOC v59"
+#define DATE    "16 March 2025"
 #define AUTHOR  "Paul Kennett"
 
 #define KM_PER_KWH 6.4F        // km per kWh (from my car) used to calculate Range estimate (6.4 km.kWh is my average for the coldest month of 2019)
-#define MAX_GIDS 1             // From my car. LeafSpy showed 225 Gids at 94.8% SOC on 12 Oct 2019.
+#define MAX_GIDS 1             // Maax GidS for 24KWH is approx 281 Gids new, 30Kwh 340Gids 40KWH approx 500 Gids, 62KWH 775 Gids
 #define GIDS_TURTLE 8          // the number of Gids at which Turtle mode kicks in (you might achieve 5-7 sometimes).
 #define WH_PER_GID 75.0F       // Wh per Gid.  74.73 comes from one of the early Leaf hackinG pioneers. (Some people prefer 80.)
 #define CAN0_INT 2             // [Why is this set using a define statement? Why bother?]
@@ -107,8 +114,8 @@ float SocPctSkewed;            // Skewing the top to show "100%" when battery is
 float kWh;                     // Energy left in main batery
 float km_per_kWh;
 byte km_per_dWh = KM_PER_KWH * 10; // using "deca"-Watthour because it's more efficient in EEPROM
-byte MaxGids = MAX_GIDS;       // Default to MAX_GIDS value before reading the EEPROM
-byte InitialGids = 0;          // Will be set to the first value of Gids read from the Can bus on startup
+short MaxGids = MAX_GIDS;       // Default to MAX_GIDS value before reading the EEPROM
+short InitialGids = 0;          // Will be set to the first value of Gids read from the Can bus on startup
 // byte GidTest = 2;              // temporary value used for comparing Gids in EEPROM to find highest value Gid
 int range;                     // My esitmated range
 char buffer[4];
@@ -118,7 +125,7 @@ byte BootCount = 5;
 
 byte EEPROMaddr0 = 0;          // Address 0 in EEPROM used for the page number
 byte EEPROMaddr1 = 1;          // Address 1 in EEPROM used for km_per_kWh
-byte EEPROMaddr2 = 2;          // Address 2 in EEPROM used for MaxGids [I should upgrade this to a 2 byte INT at some point]
+short EEPROMaddr2 = 2;          // Address 2 in EEPROM used for MaxGids [updated to short for 2 byte values]
 byte EEPROMaddr4 = 4;          // Boot counter
 //                             // EEPROMaddr 5 to EEPROMaddr 95 used for Gids values from start-up (for 60 boots, then cyles around)
 
@@ -190,7 +197,7 @@ void setup() {
   } else {
     EEPROM.update(EEPROMaddr1, km_per_dWh); // used the first time you run this code on a new Arduino
   }
-  if (EEPROM.read(EEPROMaddr2) > 100 && EEPROM.read(EEPROMaddr2) < 255 ) {
+  if (EEPROM.read(EEPROMaddr2) > 100 && EEPROM.read(EEPROMaddr2) < 800 ) { // allows for up to a 62KWH battery to be read.
     MaxGids = (EEPROM.read(EEPROMaddr2));
   } else {
     EEPROM.update(EEPROMaddr2, MaxGids);   // only used for the first time you run this code on a new Arduino
